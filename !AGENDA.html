@@ -1,0 +1,278 @@
+<!AGENDA html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Agenda Barbería</title>
+  <link href="https://cdn.jsdelivr.net/npm/fullcalendar@3.2.0/dist/fullcalendar.min.css" rel="stylesheet">
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: url('Captura%20de%20pantalla%202025-06-18%20094346.png') no-repeat center center fixed;
+      background-size: cover;
+      color: #fff;
+    }
+
+    header {
+      background-color: rgba(0, 0, 0, 0.85);
+      padding: 20px;
+      text-align: center;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 2.2em;
+    }
+
+    .login-container, form {
+      max-width: 500px;
+      margin: 20px auto;
+      background: rgba(0, 0, 0, 0.85);
+      padding: 20px;
+      border-radius: 10px;
+    }
+
+    label, input, select, button {
+      display: block;
+      width: 100%;
+      margin: 10px 0;
+      padding: 10px;
+      border-radius: 5px;
+      border: none;
+    }
+
+    button {
+      background-color: #28a745;
+      color: white;
+      cursor: pointer;
+    }
+
+    .error, .notificacion {
+      text-align: center;
+      font-weight: bold;
+    }
+
+    .error {
+      color: yellow;
+    }
+
+    .notificacion {
+      color: #00ff99;
+    }
+
+    .calendar-container {
+      max-width: 95%;
+      margin: 30px auto;
+      background-color: rgba(255, 255, 255, 0.95);
+      padding: 20px;
+      border-radius: 10px;
+    }
+
+    #calendar {
+      background: white;
+      border-radius: 8px;
+      padding: 10px;
+      color: black;
+    }
+
+    #filtro-container {
+      max-width: 500px;
+      margin: 10px auto;
+      display: none;
+    }
+
+    #filtro-nombre {
+      width: 100%;
+      padding: 10px;
+      border-radius: 5px;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>Agenda de Citas - Barbería</h1>
+  </header>
+
+  <div class="login-container">
+    <label for="rol">Tipo de usuario:</label>
+    <select id="rol">
+      <option value="usuario">Usuario</option>
+      <option value="admin">Administrador</option>
+    </select>
+
+    <div id="admin-pass-container" style="display:none">
+      <label for="admin-pass">Contraseña de Administrador:</label>
+      <input type="password" id="admin-pass" />
+    </div>
+
+    <button onclick="iniciarSesion()">Iniciar Sesión</button>
+    <div class="error" id="mensaje-error"></div>
+  </div>
+
+  <form id="formulario" style="display:none">
+    <label for="nombre">Nombre del Cliente:</label>
+    <input type="text" id="nombre" required />
+
+    <label for="fecha">Fecha:</label>
+    <input type="datetime-local" id="fecha" required />
+
+    <button type="submit">Agendar Cita</button>
+    <div class="notificacion" id="mensaje-ok"></div>
+  </form>
+
+  <div id="filtro-container">
+    <label for="filtro-nombre">Filtrar por nombre:</label>
+    <input type="text" id="filtro-nombre" placeholder="Escribe un nombre...">
+  </div>
+
+  <div class="calendar-container" id="calendario-contenedor" style="display:none">
+    <div id="calendar"></div>
+  </div>
+
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/moment@2.29.1/moment.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@3.2.0/dist/fullcalendar.min.js"></script>
+
+  <script>
+    let citasPorUsuario = JSON.parse(localStorage.getItem('citasPorUsuario')) || {};
+    let usuarioActivo = '';
+    let rolActivo = '';
+
+    document.getElementById('rol').addEventListener('change', function () {
+      document.getElementById('admin-pass-container').style.display = this.value === 'admin' ? 'block' : 'none';
+    });
+
+    function iniciarSesion() {
+      const rol = document.getElementById('rol').value;
+      const pass = document.getElementById('admin-pass').value;
+      const error = document.getElementById('mensaje-error');
+
+      if (rol === 'admin' && pass !== 'nic2408') {
+        error.textContent = 'Contraseña incorrecta';
+        return;
+      }
+
+      error.textContent = '';
+      usuarioActivo = rol === 'admin' ? 'admin' : 'usuario';
+      rolActivo = rol;
+
+      document.querySelector('.login-container').style.display = 'none';
+      document.getElementById('formulario').style.display = 'block';
+      document.getElementById('calendario-contenedor').style.display = 'block';
+
+      if (rol === 'admin') {
+        document.getElementById('filtro-container').style.display = 'block';
+      }
+
+      $('#calendar').fullCalendar('refetchEvents');
+    }
+
+    function guardarCitas() {
+      localStorage.setItem('citasPorUsuario', JSON.stringify(citasPorUsuario));
+    }
+
+    function obtenerCitas(usuario) {
+      return citasPorUsuario[usuario] || [];
+    }
+
+    function hayConflicto(usuario, fecha) {
+      return obtenerCitas(usuario).some(cita => {
+        const existente = new Date(cita.fecha);
+        return Math.abs(fecha - existente) < 60 * 60 * 1000;
+      });
+    }
+
+    function eliminarCitaPorId(usuario, id) {
+      citasPorUsuario[usuario] = obtenerCitas(usuario).filter(c => c.id !== id);
+      guardarCitas();
+      $('#calendar').fullCalendar('refetchEvents');
+    }
+
+    $('#formulario').on('submit', function(e) {
+      e.preventDefault();
+      const nombre = document.getElementById('nombre').value.trim();
+      const fecha = new Date(document.getElementById('fecha').value);
+
+      if (!nombre || isNaN(fecha.getTime())) {
+        document.getElementById('mensaje-ok').textContent = '';
+        document.getElementById('mensaje-error').textContent = 'Completa los campos correctamente';
+        return;
+      }
+
+      if (fecha < new Date()) {
+        document.getElementById('mensaje-error').textContent = 'Selecciona una fecha futura';
+        return;
+      }
+
+      if (hayConflicto(usuarioActivo, fecha)) {
+        document.getElementById('mensaje-error').textContent = 'Conflicto de horario';
+        return;
+      }
+
+      const id = Date.now();
+      const nuevaCita = { id, nombre, fecha: fecha.toISOString() };
+
+      if (!citasPorUsuario[usuarioActivo]) citasPorUsuario[usuarioActivo] = [];
+      citasPorUsuario[usuarioActivo].push(nuevaCita);
+      guardarCitas();
+      $('#calendar').fullCalendar('refetchEvents');
+
+      document.getElementById('mensaje-ok').textContent = '¡Cita registrada con éxito!';
+      this.reset();
+    });
+
+    $(document).ready(function () {
+      $('#calendar').fullCalendar({
+        defaultView: 'agendaWeek',
+        allDaySlot: false,
+        minTime: "07:00:00",
+        maxTime: "21:00:00",
+        slotDuration: "00:30:00",
+        weekends: true,
+        hiddenDays: [],
+        height: 'auto',
+        selectable: true,
+
+        eventClick: function(event) {
+          if (rolActivo === 'admin' && confirm(`¿Eliminar cita de ${event.title}?`)) {
+            for (let user in citasPorUsuario) {
+              citasPorUsuario[user] = citasPorUsuario[user].filter(c => c.id !== event.id);
+            }
+            guardarCitas();
+            $('#calendar').fullCalendar('refetchEvents');
+          }
+        },
+
+        events: function(start, end, timezone, callback) {
+          const eventos = [];
+          const filtro = document.getElementById('filtro-nombre').value.toLowerCase();
+
+          for (let user in citasPorUsuario) {
+            if (rolActivo === 'admin' || user === usuarioActivo) {
+              citasPorUsuario[user].forEach(c => {
+                if (!filtro || c.nombre.toLowerCase().includes(filtro)) {
+                  eventos.push({
+                    id: c.id,
+                    title: `${c.nombre} (${user})`,
+                    start: c.fecha,
+                    color: rolActivo === 'admin' ? '#007bff' : '#28a745',
+                    textColor: 'black'
+                  });
+                }
+              });
+            }
+          }
+
+          callback(eventos);
+        }
+      });
+
+      $('#filtro-nombre').on('input', function() {
+        $('#calendar').fullCalendar('refetchEvents');
+      });
+    });
+  </script>
+</body>
+</html>
